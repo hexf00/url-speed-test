@@ -2,6 +2,8 @@
 
 English | [简体中文](./README.zh-CN.md)
 
+[**Live demo**](https://hexf00.github.io/url-speed-test/)
+
 [![CI](https://github.com/hexf00/url-speed-test/actions/workflows/ci.yml/badge.svg)](https://github.com/hexf00/url-speed-test/actions/workflows/ci.yml)
 
 A backend-free, telemetry-free browser download speed tester. It measures the path

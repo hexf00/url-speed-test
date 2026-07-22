@@ -2,6 +2,8 @@
 
 [English](./README.md) | 简体中文
 
+[**在线体验**](https://hexf00.github.io/url-speed-test/)
+
 [![CI](https://github.com/hexf00/url-speed-test/actions/workflows/ci.yml/badge.svg)](https://github.com/hexf00/url-speed-test/actions/workflows/ci.yml)
 
 一个无后端、无遥测的浏览器下载测速页，直接测量“当前客户端到你指定的那个
