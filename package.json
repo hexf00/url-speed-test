@@ -1,0 +1,14 @@
+{
+  "name": "url-speed-test",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check app.js && node --check src/chart.js && node --check src/history.js && node --check src/measurement.js && node --check src/target.js",
+    "test": "node --test test/*.test.js",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
+  }
+}
