@@ -109,10 +109,12 @@ h2 {
 
 main {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 22px;
 }
 
 .panel {
+  min-width: 0;
   padding: clamp(22px, 4vw, 38px);
   border: 1px solid rgba(216, 221, 215, 0.9);
   border-radius: 20px;
@@ -127,6 +129,10 @@ main {
   justify-content: space-between;
   gap: 24px;
   margin-bottom: 28px;
+}
+
+.section-heading > * {
+  min-width: 0;
 }
 
 .muted,
@@ -179,6 +185,8 @@ button {
 input,
 select {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 46px;
   padding: 10px 12px;
   border: 1px solid #c8d0c9;
@@ -388,36 +396,67 @@ code {
   font-size: 0.68rem;
 }
 
+.chart-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.subheading {
+  margin: 0 0 12px;
+  font-size: 0.92rem;
+  letter-spacing: 0;
+}
+
+.notice + .subheading {
+  margin-top: 28px;
+}
+
+.transfer-grid,
 .timing-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
   margin: 0;
   border: 1px solid var(--line);
   border-radius: 14px;
   overflow: hidden;
 }
 
+.transfer-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.timing-grid {
+  grid-template-columns: repeat(6, 1fr);
+}
+
+.transfer-grid div,
 .timing-grid div {
   min-width: 0;
   padding: 18px;
   border-right: 1px solid var(--line);
 }
 
+.transfer-grid div:last-child,
 .timing-grid div:last-child {
   border-right: 0;
 }
 
+.transfer-grid dt,
 .timing-grid dt {
   color: var(--muted);
   font-size: 0.75rem;
 }
 
+.transfer-grid dd,
 .timing-grid dd {
+  overflow: hidden;
   margin: 8px 0 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 1.08rem;
   font-variant-numeric: tabular-nums;
   font-weight: 750;
+  text-overflow: ellipsis;
 }
 
 .notice {
@@ -459,21 +498,47 @@ code {
 }
 
 .table-wrap {
+  max-width: 100%;
   overflow-x: auto;
 }
 
 table {
   width: 100%;
+  min-width: 850px;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.82rem;
 }
 
 th,
 td {
+  overflow: hidden;
   padding: 13px 10px;
   border-bottom: 1px solid var(--line);
   text-align: left;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+th:nth-child(1) {
+  width: 160px;
+}
+
+th:nth-child(2) {
+  width: 220px;
+}
+
+th:nth-child(3) {
+  width: 120px;
+}
+
+th:nth-child(4) {
+  width: 180px;
+}
+
+th:nth-child(5),
+th:nth-child(6) {
+  width: 85px;
 }
 
 th {
@@ -484,9 +549,7 @@ th {
 }
 
 td:nth-child(2) {
-  max-width: 340px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 220px;
 }
 
 .empty-state {
@@ -525,6 +588,18 @@ footer p {
 
   .metric-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .transfer-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .transfer-grid div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .transfer-grid div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
   }
 
   .timing-grid {

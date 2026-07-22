@@ -6,6 +6,7 @@ import {
 } from "./src/history.js";
 import {
   RunCancelledError,
+  TRANSFER_SOURCE,
   TargetRequestError,
   runDownload,
 } from "./src/measurement.js";
@@ -20,17 +21,20 @@ import {
 
 const elements = {
   activeTarget: document.querySelector("#active-target"),
-  averageSpeed: document.querySelector("#average-speed"),
   clearHistory: document.querySelector("#clear-history"),
+  compressionRatio: document.querySelector("#compression-ratio"),
+  compressionSavings: document.querySelector("#compression-savings"),
   concurrency: document.querySelector("#concurrency"),
-  currentSpeed: document.querySelector("#current-speed"),
+  decodedBodySize: document.querySelector("#decoded-body-size"),
+  decodedCurrentSpeed: document.querySelector("#decoded-current-speed"),
+  decodedPeakSpeed: document.querySelector("#decoded-peak-speed"),
+  decodedReceived: document.querySelector("#decoded-received"),
   duration: document.querySelector("#duration"),
   elapsed: document.querySelector("#elapsed"),
   form: document.querySelector("#speed-test-form"),
   historyBody: document.querySelector("#history-body"),
   historyEmpty: document.querySelector("#history-empty"),
   historyTableWrap: document.querySelector("#history-table-wrap"),
-  peakSpeed: document.querySelector("#peak-speed"),
   presetMessage: document.querySelector("#preset-message"),
   presetSelect: document.querySelector("#preset-select"),
   responseMeta: document.querySelector("#response-meta"),
@@ -46,7 +50,9 @@ const elements = {
   timingTotal: document.querySelector("#timing-total"),
   timingTransfer: document.querySelector("#timing-transfer"),
   timingTtfb: document.querySelector("#timing-ttfb"),
-  transferred: document.querySelector("#transferred"),
+  transferAverageSpeed: document.querySelector("#transfer-average-speed"),
+  transferredBodySize: document.querySelector("#transferred-body-size"),
+  transferNote: document.querySelector("#transfer-note"),
 };
 
 const timingElements = {
@@ -62,19 +68,30 @@ let presets = [];
 let activeController = null;
 
 function formatMbps(value) {
-  if (!Number.isFinite(value)) return "0.00";
+  if (!Number.isFinite(value)) return "—";
   if (value >= 1000) return value.toFixed(0);
   if (value >= 100) return value.toFixed(1);
   return value.toFixed(2);
 }
 
 function formatBytes(value) {
-  if (!Number.isFinite(value) || value <= 0) return "0 B";
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  const unitIndex = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
-  const amount = value / 1024 ** unitIndex;
+  if (!Number.isFinite(value)) return "—";
+  if (value <= 0) return "0 B";
+  const units = ["B", "kB", "MB", "GB", "TB"];
+  const unitIndex = Math.min(Math.floor(Math.log(value) / Math.log(1000)), units.length - 1);
+  const amount = value / 1000 ** unitIndex;
   const digits = amount >= 100 || unitIndex === 0 ? 0 : amount >= 10 ? 1 : 2;
   return `${amount.toFixed(digits)} ${units[unitIndex]}`;
+}
+
+function formatRatio(value) {
+  return Number.isFinite(value) ? `${value.toFixed(2)}×` : "—";
+}
+
+function formatPercent(value) {
+  if (!Number.isFinite(value)) return "—";
+  const prefix = value > 0 ? "" : value < 0 ? "−" : "";
+  return `${prefix}${Math.abs(value).toFixed(1)}%`;
 }
 
 function formatMilliseconds(value) {
@@ -120,12 +137,19 @@ function setRunning(running) {
 }
 
 function resetMeasurement() {
-  elements.currentSpeed.textContent = "0.00";
-  elements.averageSpeed.textContent = "0.00";
-  elements.peakSpeed.textContent = "0.00";
-  elements.transferred.textContent = "0 B";
+  elements.transferAverageSpeed.textContent = "—";
+  elements.decodedCurrentSpeed.textContent = "0.00";
+  elements.decodedPeakSpeed.textContent = "0.00";
+  elements.decodedReceived.textContent = "0 B";
   elements.elapsed.textContent = "0.00 秒";
+  elements.transferredBodySize.textContent = "—";
+  elements.decodedBodySize.textContent = "—";
+  elements.compressionRatio.textContent = "—";
+  elements.compressionSavings.textContent = "—";
   elements.responseMeta.textContent = "测速中…";
+  elements.transferNote.dataset.kind = "";
+  elements.transferNote.textContent =
+    "压缩后响应体不包含 HTTP 头和协议开销；请求结束后显示精确结果。";
   elements.timingNote.dataset.kind = "";
   elements.timingNote.textContent =
     "详细阶段来自 Resource Timing API；连接复用时 DNS、连接或 TLS 可能为 0 ms。";
@@ -134,10 +158,9 @@ function resetMeasurement() {
 }
 
 function renderLiveSample(samples, live) {
-  elements.currentSpeed.textContent = formatMbps(live.currentMbps);
-  elements.averageSpeed.textContent = formatMbps(live.averageMbps);
-  elements.peakSpeed.textContent = formatMbps(live.peakMbps);
-  elements.transferred.textContent = formatBytes(live.totalBytes);
+  elements.decodedCurrentSpeed.textContent = formatMbps(live.decodedCurrentMbps);
+  elements.decodedPeakSpeed.textContent = formatMbps(live.decodedPeakMbps);
+  elements.decodedReceived.textContent = formatBytes(live.decodedBytes);
   elements.elapsed.textContent = `${(live.elapsedMs / 1000).toFixed(2)} 秒`;
   renderSpeedChart(elements.speedChart, samples);
 }
@@ -147,10 +170,40 @@ function renderResult(result) {
     ...result.summary,
     elapsedMs: result.elapsedMs,
   });
+  elements.transferAverageSpeed.textContent = formatMbps(
+    result.summary.transferAverageMbps
+  );
+  elements.transferredBodySize.textContent = formatBytes(
+    result.summary.transferredBodyBytes
+  );
+  elements.decodedBodySize.textContent = formatBytes(result.summary.decodedBytes);
+  elements.compressionRatio.textContent = formatRatio(result.summary.compressionRatio);
+  elements.compressionSavings.textContent = formatPercent(
+    result.summary.compressionSavingsPercent
+  );
+
+  if (result.summary.transferSource === TRANSFER_SOURCE.RESOURCE_TIMING) {
+    elements.transferNote.dataset.kind = "";
+    elements.transferNote.textContent =
+      "实际下载来自 Resource Timing 的压缩后响应体字节；实时曲线仍表示浏览器解码吞吐。";
+  } else if (result.summary.transferSource === TRANSFER_SOURCE.CONTENT_LENGTH) {
+    elements.transferNote.dataset.kind = "";
+    elements.transferNote.textContent =
+      "实际下载来自完整响应的 Content-Length；实时曲线仍表示浏览器解码吞吐。";
+  } else {
+    elements.transferNote.dataset.kind = "warning";
+    elements.transferNote.textContent =
+      result.completionReason === "duration-limit"
+        ? "请求在完整读取前达到时长上限；浏览器不公开中断响应的压缩后字节，因此实际速度与压缩比不可用。"
+        : "浏览器未公开压缩后响应体大小，且完整响应没有可用的 Content-Length；实际速度与压缩比不可用。";
+  }
 
   const protocol = result.timing.protocol || "协议未知";
   const status = result.response ? `HTTP ${result.response.status}` : "响应状态未知";
-  elements.responseMeta.textContent = `${status} · ${protocol} · ${completionLabel(
+  const encoding = result.response?.contentEncoding
+    ? ` · ${result.response.contentEncoding}`
+    : "";
+  elements.responseMeta.textContent = `${status} · ${protocol}${encoding} · ${completionLabel(
     result.completionReason
   )}`;
 
@@ -165,7 +218,7 @@ function renderResult(result) {
   } else if (!result.timing.detailAvailable) {
     elements.timingNote.dataset.kind = "warning";
     elements.timingNote.textContent =
-      "目标未通过 Timing-Allow-Origin 向此页面开放详细耗时；吞吐仍有效，但 DNS、连接、TLS 与 TTFB 不可见。";
+      "目标未通过 Timing-Allow-Origin 向此页面开放详细耗时；实时解码吞吐仍有效，但 DNS、连接、TLS 与 TTFB 不可见。";
   } else if (result.timing.connectionReused) {
     elements.timingNote.dataset.kind = "";
     elements.timingNote.textContent =
@@ -194,12 +247,19 @@ function renderHistory(results) {
     const row = document.createElement("tr");
     appendCell(row, formatDate(result.endedAt));
     appendCell(row, result.target.label, result.target.location);
-    appendCell(row, `${formatMbps(result.summary.averageMbps)} Mbps`);
-    appendCell(row, `${formatMbps(result.summary.peakMbps)} Mbps`);
     appendCell(
       row,
-      `${formatBytes(result.summary.totalBytes)} / ${(result.elapsedMs / 1000).toFixed(2)} s`
+      Number.isFinite(result.summary.transferAverageMbps)
+        ? `${formatMbps(result.summary.transferAverageMbps)} Mbps`
+        : "—"
     );
+    appendCell(
+      row,
+      `${formatBytes(result.summary.transferredBodyBytes)} / ${formatBytes(
+        result.summary.decodedBytes
+      )}`
+    );
+    appendCell(row, formatRatio(result.summary.compressionRatio));
     appendCell(row, result.timing?.protocol || "—");
     elements.historyBody.append(row);
   }
@@ -291,15 +351,15 @@ elements.form.addEventListener("submit", async (event) => {
     });
 
     renderResult(result);
+    const completedMetric = Number.isFinite(result.summary.transferAverageMbps)
+      ? `实际平均 ${formatMbps(result.summary.transferAverageMbps)} Mbps`
+      : "实际传输速度不可见";
     try {
       renderHistory(prependHistoryResult(result));
-      setStatus(`完成 · 平均 ${formatMbps(result.summary.averageMbps)} Mbps`, "complete");
+      setStatus(`完成 · ${completedMetric}`, "complete");
     } catch (historyError) {
       console.error("Unable to persist local history", historyError);
-      setStatus(
-        `完成 · 平均 ${formatMbps(result.summary.averageMbps)} Mbps · 本地历史保存失败`,
-        "complete"
-      );
+      setStatus(`完成 · ${completedMetric} · 本地历史保存失败`, "complete");
     }
   } catch (error) {
     if (error instanceof RunCancelledError) {

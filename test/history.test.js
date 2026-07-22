@@ -34,15 +34,27 @@ function result(id = "run-1") {
     id,
     options: { concurrency: 1, durationMs: 10_000, sampleIntervalMs: 250 },
     response: {
+      completed: true,
+      contentEncoding: "gzip",
       contentLength: 1_000_000,
       finalUrl: "https://cdn.example.test/file.bin?token=final-secret",
       status: 200,
       streamIndex: 0,
     },
-    samples: [{ bytes: 1_000_000, elapsedMs: 1_000, mbps: 8 }],
-    schemaVersion: 1,
+    samples: [{ decodedBytes: 1_000_000, decodedMbps: 8, elapsedMs: 1_000 }],
+    schemaVersion: 2,
     startedAt: "2026-07-22T01:00:00.000Z",
-    summary: { averageMbps: 8, currentMbps: 8, peakMbps: 8, totalBytes: 1_000_000 },
+    summary: {
+      compressionRatio: 1.25,
+      compressionSavingsPercent: 20,
+      decodedAverageMbps: 8,
+      decodedBytes: 1_000_000,
+      decodedCurrentMbps: 8,
+      decodedPeakMbps: 8,
+      transferAverageMbps: 6.4,
+      transferredBodyBytes: 800_000,
+      transferSource: "resource-timing",
+    },
     target: {
       label: "Signed file",
       source: "manual",
@@ -75,7 +87,7 @@ test("history prepends results and enforces the local limit", () => {
 
 test("invalid history is removed instead of reaching the UI", () => {
   const storage = new MemoryStorage();
-  storage.setItem(HISTORY_KEY, JSON.stringify({ results: [{}], schemaVersion: 1 }));
+  storage.setItem(HISTORY_KEY, JSON.stringify({ results: [{}], schemaVersion: 2 }));
 
   assert.deepEqual(readHistory(storage), { recovered: true, results: [] });
   assert.equal(storage.getItem(HISTORY_KEY), null);
@@ -88,6 +100,14 @@ test("clearHistory removes the versioned document", () => {
   assert.deepEqual(readHistory(storage), { recovered: false, results: [] });
 });
 
+test("reading v2 history removes the retired v1 document", () => {
+  const storage = new MemoryStorage();
+  storage.setItem("url-speed-test.history.v1", "retired");
+
+  assert.deepEqual(readHistory(storage), { recovered: false, results: [] });
+  assert.equal(storage.getItem("url-speed-test.history.v1"), null);
+});
+
 test("unavailable storage does not block the measurement UI from starting", () => {
   const storage = {
     getItem() {
@@ -96,4 +116,20 @@ test("unavailable storage does not block the measurement UI from starting", () =
   };
 
   assert.deepEqual(readHistory(storage), { recovered: false, results: [] });
+});
+
+test("read-only storage can still provide current history", () => {
+  const writable = new MemoryStorage();
+  prependHistoryResult(result(), writable);
+  const serialized = writable.getItem(HISTORY_KEY);
+  const readOnly = {
+    getItem(key) {
+      return key === HISTORY_KEY ? serialized : null;
+    },
+    removeItem() {
+      throw new DOMException("blocked", "SecurityError");
+    },
+  };
+
+  assert.equal(readHistory(readOnly).results.length, 1);
 });

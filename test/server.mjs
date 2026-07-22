@@ -3,11 +3,14 @@ import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 
 const appOrigin = "http://127.0.0.1:4173";
 const targetOrigin = "http://127.0.0.1:4174";
 const root = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const chunk = Buffer.alloc(64 * 1024, 0x5a);
+const decodedCompressedFixture = Buffer.from("url-speed-test-".repeat(400_000));
+const encodedCompressedFixture = gzipSync(decodedCompressedFixture);
 
 const mimeTypes = new Map([
   [".css", "text/css; charset=utf-8"],
@@ -67,15 +70,22 @@ async function serveStatic(request, response) {
   }
 }
 
-function streamFixture(request, response, { chunkCount = 48, timingAllowed }) {
+function requestHasExpectedToken(request) {
   const requestUrl = new URL(request.url, targetOrigin);
   const tokens = requestUrl.searchParams.getAll("token");
   const allowedToken = tokens[0] === "manual-secret" || tokens[0] === "preset-token";
   const exactQuery = requestUrl.searchParams.size === 1 && tokens.length === 1;
+  return allowedToken && exactQuery;
+}
 
-  if (!allowedToken || !exactQuery) {
-    response.writeHead(400, { "access-control-allow-origin": appOrigin });
-    response.end("The request URL was changed");
+function rejectChangedUrl(response) {
+  response.writeHead(400, { "access-control-allow-origin": appOrigin });
+  response.end("The request URL was changed");
+}
+
+function streamFixture(request, response, { chunkCount = 48, timingAllowed }) {
+  if (!requestHasExpectedToken(request)) {
+    rejectChangedUrl(response);
     return;
   }
 
@@ -102,6 +112,37 @@ function streamFixture(request, response, { chunkCount = 48, timingAllowed }) {
   writeNext();
 }
 
+function streamCompressedFixture(request, response) {
+  if (!requestHasExpectedToken(request)) {
+    rejectChangedUrl(response);
+    return;
+  }
+
+  response.writeHead(200, {
+    "access-control-allow-origin": appOrigin,
+    "access-control-expose-headers": "Content-Encoding",
+    "cache-control": "no-store",
+    "content-encoding": "gzip",
+    "content-length": encodedCompressedFixture.length,
+    "content-type": "application/octet-stream",
+    "timing-allow-origin": appOrigin,
+  });
+
+  let offset = 0;
+  const writeNext = () => {
+    if (response.destroyed) return;
+    if (offset >= encodedCompressedFixture.length) {
+      response.end();
+      return;
+    }
+    const nextOffset = Math.min(offset + 1_024, encodedCompressedFixture.length);
+    response.write(encodedCompressedFixture.subarray(offset, nextOffset));
+    offset = nextOffset;
+    setTimeout(writeNext, 14);
+  };
+  writeNext();
+}
+
 const appServer = createServer((request, response) => {
   serveStatic(request, response).catch((error) => {
     console.error(error);
@@ -122,6 +163,10 @@ const targetServer = createServer((request, response) => {
   }
   if (requestUrl.pathname === "/no-tao.bin") {
     streamFixture(request, response, { timingAllowed: false });
+    return;
+  }
+  if (requestUrl.pathname === "/compressed.bin") {
+    streamCompressedFixture(request, response);
     return;
   }
   response.writeHead(404, { "access-control-allow-origin": appOrigin });

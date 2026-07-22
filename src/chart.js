@@ -26,7 +26,9 @@ export function renderSpeedChart(svg, samples) {
   const plotWidth = WIDTH - PADDING.left - PADDING.right;
   const plotHeight = HEIGHT - PADDING.top - PADDING.bottom;
   const maxSeconds = Math.max((samples.at(-1)?.elapsedMs ?? 0) / 1000, 1);
-  const maxMbps = niceMaximum(Math.max(...samples.map((sample) => sample.mbps), 0));
+  const maxMbps = niceMaximum(
+    Math.max(...samples.map((sample) => sample.decodedMbps), 0)
+  );
 
   for (let index = 0; index <= 4; index += 1) {
     const ratio = index / 4;
@@ -63,7 +65,7 @@ export function renderSpeedChart(svg, samples) {
   const points = samples
     .map((sample) => {
       const x = PADDING.left + (sample.elapsedMs / 1000 / maxSeconds) * plotWidth;
-      const y = PADDING.top + (1 - sample.mbps / maxMbps) * plotHeight;
+      const y = PADDING.top + (1 - sample.decodedMbps / maxMbps) * plotHeight;
       return `${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");

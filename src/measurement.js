@@ -1,4 +1,9 @@
-const RESULT_SCHEMA_VERSION = 1;
+export const RESULT_SCHEMA_VERSION = 2;
+
+export const TRANSFER_SOURCE = Object.freeze({
+  CONTENT_LENGTH: "content-length",
+  RESOURCE_TIMING: "resource-timing",
+});
 
 export const COMPLETION_REASON = Object.freeze({
   RESPONSE_COMPLETE: "response-complete",
@@ -24,28 +29,138 @@ export function bytesPerWindowToMbps(bytes, elapsedMs) {
   return (bytes * 8) / (elapsedMs * 1000);
 }
 
-export function summarizeSamples(samples, totalBytes, elapsedMs) {
-  const averageMbps = bytesPerWindowToMbps(totalBytes, elapsedMs);
-  const peakMbps = samples.reduce((peak, sample) => Math.max(peak, sample.mbps), 0);
-  const currentMbps = samples.at(-1)?.mbps ?? 0;
-  return { averageMbps, currentMbps, peakMbps };
+export function summarizeDecodedSamples(samples, decodedBytes, elapsedMs) {
+  const decodedAverageMbps = bytesPerWindowToMbps(decodedBytes, elapsedMs);
+  const decodedPeakMbps = samples.reduce(
+    (peak, sample) => Math.max(peak, sample.decodedMbps),
+    0
+  );
+  const decodedCurrentMbps = samples.at(-1)?.decodedMbps ?? 0;
+  return { decodedAverageMbps, decodedCurrentMbps, decodedPeakMbps };
 }
 
-export function selectResourceTiming(entries, requestUrl, runStartedAt) {
-  const matching = entries
+export function selectResourceTimings(entries, requestUrl, runStartedAt) {
+  return entries
     .filter(
       (entry) =>
         entry.entryType === "resource" &&
         entry.name === requestUrl &&
+        (!entry.initiatorType || entry.initiatorType === "fetch") &&
         entry.startTime >= runStartedAt - 1
     )
     .sort((left, right) => left.startTime - right.startTime);
+}
 
+export function selectPhaseResourceTiming(entries) {
   return (
-    matching.find((entry) => entry.connectEnd > entry.connectStart) ??
-    matching[0] ??
+    entries.find((entry) => entry.connectEnd > entry.connectStart) ??
+    entries[0] ??
     null
   );
+}
+
+function createTransferMeasurement(
+  transferredBodyBytes,
+  decodedBytes,
+  elapsedMs,
+  source
+) {
+  const compressionRatio =
+    transferredBodyBytes > 0
+      ? decodedBytes / transferredBodyBytes
+      : decodedBytes === 0
+        ? 1
+        : null;
+  const compressionSavingsPercent =
+    decodedBytes > 0
+      ? ((decodedBytes - transferredBodyBytes) / decodedBytes) * 100
+      : 0;
+
+  return Object.freeze({
+    compressionRatio,
+    compressionSavingsPercent,
+    transferAverageMbps: bytesPerWindowToMbps(transferredBodyBytes, elapsedMs),
+    transferredBodyBytes,
+    transferSource: source,
+  });
+}
+
+function unavailableTransferMeasurement() {
+  return Object.freeze({
+    compressionRatio: null,
+    compressionSavingsPercent: null,
+    transferAverageMbps: null,
+    transferredBodyBytes: null,
+    transferSource: null,
+  });
+}
+
+export function summarizeTransferMeasurement({
+  completionReason,
+  decodedBytes,
+  elapsedMs,
+  resourceEntries,
+  responses,
+}) {
+  if (
+    completionReason !== COMPLETION_REASON.RESPONSE_COMPLETE ||
+    responses.length === 0 ||
+    responses.some((response) => !response.completed)
+  ) {
+    return unavailableTransferMeasurement();
+  }
+
+  if (
+    resourceEntries.length === responses.length &&
+    resourceEntries.every(
+      (entry) =>
+        Number.isFinite(entry.encodedBodySize) &&
+        entry.encodedBodySize >= 0 &&
+        Number.isFinite(entry.decodedBodySize) &&
+        entry.decodedBodySize >= 0
+    )
+  ) {
+    const resourceDecodedBytes = resourceEntries.reduce(
+      (total, entry) => total + entry.decodedBodySize,
+      0
+    );
+    const resourceEncodedBytes = resourceEntries.reduce(
+      (total, entry) => total + entry.encodedBodySize,
+      0
+    );
+    const sizesAreExposed = decodedBytes === 0 || resourceEncodedBytes > 0;
+
+    if (sizesAreExposed && resourceDecodedBytes === decodedBytes) {
+      return createTransferMeasurement(
+        resourceEncodedBytes,
+        decodedBytes,
+        elapsedMs,
+        TRANSFER_SOURCE.RESOURCE_TIMING
+      );
+    }
+  }
+
+  if (
+    responses.every(
+      (response) =>
+        Number.isSafeInteger(response.contentLength) && response.contentLength >= 0
+    )
+  ) {
+    const contentLengthBytes = responses.reduce(
+      (total, response) => total + response.contentLength,
+      0
+    );
+    if (decodedBytes === 0 || contentLengthBytes > 0) {
+      return createTransferMeasurement(
+        contentLengthBytes,
+        decodedBytes,
+        elapsedMs,
+        TRANSFER_SOURCE.CONTENT_LENGTH
+      );
+    }
+  }
+
+  return unavailableTransferMeasurement();
 }
 
 export function summarizeResourceTiming(entry, { pageOrigin, targetUrl }) {
@@ -121,9 +236,9 @@ export async function runDownload(
   const startedAt = new Date().toISOString();
   let completionReason = COMPLETION_REASON.RESPONSE_COMPLETE;
   let cancelled = false;
-  let totalBytes = 0;
+  let decodedBytes = 0;
   let lastSampleAt = runStartedAt;
-  let lastSampleBytes = 0;
+  let lastSampleDecodedBytes = 0;
   const responses = [];
   const samples = [];
 
@@ -139,22 +254,22 @@ export async function runDownload(
     const windowMs = now - lastSampleAt;
     if (windowMs <= 0 || (!force && windowMs < sampleIntervalMs * 0.8)) return;
 
-    const windowBytes = totalBytes - lastSampleBytes;
+    const windowDecodedBytes = decodedBytes - lastSampleDecodedBytes;
     const sample = Object.freeze({
-      bytes: totalBytes,
+      decodedBytes,
+      decodedMbps: bytesPerWindowToMbps(windowDecodedBytes, windowMs),
       elapsedMs: now - runStartedAt,
-      mbps: bytesPerWindowToMbps(windowBytes, windowMs),
     });
     samples.push(sample);
     lastSampleAt = now;
-    lastSampleBytes = totalBytes;
+    lastSampleDecodedBytes = decodedBytes;
 
     onSample(
       sample,
       Object.freeze({
-        ...summarizeSamples(samples, totalBytes, now - runStartedAt),
+        ...summarizeDecodedSamples(samples, decodedBytes, now - runStartedAt),
+        decodedBytes,
         elapsedMs: now - runStartedAt,
-        totalBytes,
       })
     );
   };
@@ -192,21 +307,32 @@ export async function runDownload(
       throw new TargetRequestError("目标响应不支持流式读取。");
     }
 
-    responses.push(
-      Object.freeze({
-        contentLength: Number(response.headers.get("content-length")) || null,
-        finalUrl: response.url,
-        status: response.status,
-        streamIndex,
-      })
-    );
+    const contentLengthHeader = response.headers.get("content-length");
+    const parsedContentLength = Number(contentLengthHeader);
+    const responseRecord = {
+      completed: false,
+      contentEncoding: response.headers.get("content-encoding"),
+      contentLength:
+        contentLengthHeader !== null &&
+        Number.isSafeInteger(parsedContentLength) &&
+        parsedContentLength >= 0
+          ? parsedContentLength
+          : null,
+      finalUrl: response.url,
+      status: response.status,
+      streamIndex,
+    };
+    responses.push(responseRecord);
 
     const reader = response.body.getReader();
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-        totalBytes += value.byteLength;
+        if (done) {
+          responseRecord.completed = true;
+          break;
+        }
+        decodedBytes += value.byteLength;
       }
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -233,18 +359,29 @@ export async function runDownload(
   recordSample(true);
   const endedAt = new Date().toISOString();
   const elapsedMs = performance.now() - runStartedAt;
-  const summary = summarizeSamples(samples, totalBytes, elapsedMs);
+  const decodedSummary = summarizeDecodedSamples(samples, decodedBytes, elapsedMs);
 
   // Resource entries are queued after the body completes or the request is aborted.
   await new Promise((resolve) => setTimeout(resolve, 0));
-  const entry = selectResourceTiming(
+  const resourceEntries = selectResourceTimings(
     performance.getEntriesByType("resource"),
     target.url,
     runStartedAt
   );
+  const entry = selectPhaseResourceTiming(resourceEntries);
   const timing = summarizeResourceTiming(entry, {
     pageOrigin: location.origin,
     targetUrl: target.url,
+  });
+  const frozenResponses = responses
+    .sort((left, right) => left.streamIndex - right.streamIndex)
+    .map((response) => Object.freeze({ ...response }));
+  const transferSummary = summarizeTransferMeasurement({
+    completionReason,
+    decodedBytes,
+    elapsedMs,
+    resourceEntries,
+    responses: frozenResponses,
   });
 
   return Object.freeze({
@@ -253,11 +390,15 @@ export async function runDownload(
     endedAt,
     id: crypto.randomUUID(),
     options: Object.freeze({ concurrency, durationMs, sampleIntervalMs }),
-    response: responses[0] ?? null,
+    response: frozenResponses[0] ?? null,
     samples: Object.freeze(samples),
     schemaVersion: RESULT_SCHEMA_VERSION,
     startedAt,
-    summary: Object.freeze({ ...summary, totalBytes }),
+    summary: Object.freeze({
+      decodedBytes,
+      ...decodedSummary,
+      ...transferSummary,
+    }),
     target,
     timing,
   });
