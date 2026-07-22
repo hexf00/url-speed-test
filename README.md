@@ -1,37 +1,45 @@
 # URL Speed Test
 
+English | [简体中文](./README.zh-CN.md)
+
 [![CI](https://github.com/hexf00/url-speed-test/actions/workflows/ci.yml/badge.svg)](https://github.com/hexf00/url-speed-test/actions/workflows/ci.yml)
 
-一个无后端、无遥测的浏览器下载测速页。它测试的是“当前客户端到你指定的那个
-HTTP(S) 文件或接口”的路径，不是某个第三方测速节点。
+A backend-free, telemetry-free browser download speed tester. It measures the path
+from the current client to a specific HTTP(S) file or API resource that you choose.
 
-## 能测什么
+## What it measures
 
-- 原样请求手动输入或预置的 URL，不追加 cache-busting 查询参数。
-- 按 250 ms 窗口绘制实时速度曲线，展示当前、平均、峰值、流量与时长。
-- 展示浏览器可见的 DNS、连接、TLS、TTFB、传输、总耗时和 HTTP 协议。
-- 默认一个下载请求，可选择 1–8 个对同一 URL 的并发请求。
-- 结果仅写入浏览器 `localStorage`；历史中的 URL 会移除 query 和 hash。
+- Requests a manually entered or preset URL as-is, without appending cache-busting
+  query parameters.
+- Plots a live throughput curve in 250 ms windows and shows current, average, and
+  peak throughput, transferred bytes, and duration.
+- Shows browser-visible DNS, connection, TLS, TTFB, transfer, total timing, and HTTP
+  protocol data.
+- Uses one request by default, with configurable concurrency from 1 to 8 for the same URL.
+- Stores results only in browser `localStorage`; query strings and fragments are
+  removed from historical URLs.
 
-测速使用原生 `fetch`、`ReadableStream` 和 Resource Timing API，运行时没有框架或
-测速库依赖。
+The measurement path uses native `fetch`, `ReadableStream`, and the Resource Timing API.
+It has no runtime framework or speed-test library dependencies.
 
-## 直接运行
+## Run locally
 
-这是一个静态站点，需通过 HTTP(S) 提供，不能直接双击 `index.html`：
+This is a static site and must be served over HTTP(S):
 
 ```bash
 python3 -m http.server 8080
 ```
 
-然后访问 <http://localhost:8080>，输入一个允许浏览器跨域读取的大文件 URL。
+Open <http://localhost:8080>, then enter a large-file URL that allows the browser to
+read its response across origins.
 
-也可以把仓库根目录部署到 GitHub Pages、对象存储静态站点或任意 Web 服务器。
-若测速页使用 HTTPS，目标也必须使用 HTTPS，否则浏览器会按 mixed content 阻止请求。
+You can also deploy the repository root to GitHub Pages, an object-storage static
+site, or any web server. When the speed-test page uses HTTPS, the Target must also use
+HTTPS because browsers block mixed-content requests.
 
-## 配置预置目标
+## Configure preset Targets
 
-编辑 [`targets.json`](./targets.json)：
+Edit [`targets.json`](./targets.json):
 
 ```json
 {
@@ -45,52 +53,63 @@ python3 -m http.server 8080
 }
 ```
 
-预置与手动输入最终都会变成同一个 Target，并进入同一条 `Target → Run → Result`
-执行路径。一次 Run 只测一个 Target；未来若增加批量能力，Batch 会按顺序发起多个
-相互独立的 Run。
+Preset and manual inputs normalize to the same Target and enter the same
+`Target → Run → Result` execution path. Each Run measures exactly one Target. A future
+Batch will start sequential, independent Runs so Targets do not compete for client
+bandwidth while being compared.
 
-不要把长期密钥写进公开的 `targets.json`。临时签名 URL 更适合在页面中手动输入。
+Keep long-lived secrets out of a public `targets.json`. Enter temporary signed URLs
+manually instead.
 
-## 目标服务配置
+## Configure the Target service
 
-跨域下载至少需要允许测速页读取响应：
+A cross-origin download response must allow the speed-test page to read it:
 
 ```http
 Access-Control-Allow-Origin: https://speed.example.com
 ```
 
-若还要看到 DNS、连接、TLS、TTFB 等详细阶段，需要额外返回：
+To expose detailed DNS, connection, TLS, and TTFB phases, also return:
 
 ```http
 Timing-Allow-Origin: https://speed.example.com
 ```
 
-也可以按你的安全策略使用明确的多源配置。只有在确实允许任意站点读取这些响应时，
-才使用 `*`。
+Use explicit allowed origins according to your security policy. Use `*` only when any
+site is intentionally allowed to read the response and its timing data.
 
-推荐目标满足以下条件：
+A suitable Target should:
 
-- 只读、幂等的 `GET` 资源，不产生业务副作用。
-- 文件足够大，或接口能持续输出；达到设定时长后浏览器会中止未完成的请求。
-- 返回不可压缩或已压缩的二进制数据。Fetch 读取的是应用可见的响应体；高度可压缩且
-  使用 `Content-Encoding` 的内容不适合代表线上传输字节率。
-- 接受匿名请求或查询参数签名。本工具使用 `credentials: "omit"`，不会携带 Cookie。
+- Be a read-only, idempotent `GET` resource with no business side effects.
+- Be large enough, or stream long enough, for the configured duration. The browser
+  aborts an unfinished request when the duration limit is reached.
+- Return incompressible or already-compressed binary data. Fetch reads the
+  application-visible response body, so highly compressible content served with
+  `Content-Encoding` is a poor representation of transferred byte throughput.
+- Accept anonymous access or query-string signatures. The tester uses
+  `credentials: "omit"` and sends no cookies.
 
-`cache: "no-store"` 用于绕过浏览器 HTTP 缓存，并且不会修改目标 URL。上游 CDN、
-反向代理或源站如何缓存，仍由目标服务控制，也属于本次客户端到该服务路径的一部分。
+`cache: "no-store"` bypasses the browser HTTP cache without changing the Target URL.
+Caching by an upstream CDN, reverse proxy, or origin remains controlled by the Target
+service and is part of the measured client-to-service path.
 
-## 如何理解结果
+## Interpret the result
 
-- Mbps 使用十进制定义：`bytes × 8 / elapsed seconds / 1,000,000`。
-- 默认并发为 1，最接近一次普通下载。增加并发会同时请求同一 URL，常用于观察单连接
-  未跑满时的聚合吞吐，也会按并发数增加服务端请求和流量。
-- DNS、连接或 TLS 为 `0 ms` 通常表示浏览器复用了已有解析或连接，并非测量错误。
-- 跨域目标没有 `Timing-Allow-Origin` 时，吞吐仍可测，但受保护的分阶段耗时会显示为空。
-- 结果代表本次浏览器、网络、目标服务与缓存链路的共同表现，不等同于物理链路上限。
+- Mbps uses the decimal definition: `bytes × 8 / elapsed seconds / 1,000,000`.
+- Concurrency defaults to 1, which resembles a normal single download. Increasing
+  concurrency requests the same URL simultaneously and can reveal aggregate
+  throughput when one connection does not saturate the path; it also multiplies
+  Target requests and traffic.
+- A `0 ms` DNS, connection, or TLS phase usually means the browser reused an existing
+  resolution or connection.
+- Without `Timing-Allow-Origin`, cross-origin throughput remains measurable while
+  protected phase timings stay blank.
+- A Result represents the browser, network, Target service, and cache path during
+  that specific Run. Physical link capacity is a different metric.
 
-## 开发与验证
+## Development and validation
 
-需要 Node.js 24：
+Node.js 24 is required:
 
 ```bash
 npm ci
@@ -100,15 +119,18 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-单元测试覆盖 URL、计量、Resource Timing 与历史脱敏边界；Playwright 测试使用真实
-跨域流式响应验证手动 URL、预置 Target、速度曲线、TAO 降级和 localStorage 脱敏。
+Unit tests cover URL handling, throughput calculation, Resource Timing, and History
+sanitization. Playwright uses a real cross-origin streaming response to verify manual
+URLs, preset Targets, the live curve, TAO degradation, and `localStorage` sanitization.
 
-领域词汇见 [`CONTEXT.md`](./CONTEXT.md)，关键设计决策见 [`docs/adr`](./docs/adr)。
+See [`CONTEXT.md`](./CONTEXT.md) for domain terminology and [`docs/adr`](./docs/adr)
+for design decisions.
 
-## 范围边界
+## Scope
 
-当前版本只做浏览器到指定目标的下载测速。它不提供上传测速、ICMP ping、服务端内部
-阶段拆分、绕过 CORS 的代理，或把历史发送到后端。
+The current release covers browser-to-Target download measurement. Upload testing,
+ICMP ping, server-internal timing, a CORS-bypassing proxy, and backend History storage
+are outside its scope.
 
 ## License
 
