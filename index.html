@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="在浏览器中测试客户端到指定 HTTP(S) 文件或接口的下载速度与连接耗时。"
+    />
+    <title>URL Speed Test</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <p class="eyebrow">Browser network probe</p>
+        <h1>URL Speed Test</h1>
+        <p class="lede">
+          测量当前浏览器到一个具体 HTTP(S) 目标的下载吞吐，并展示浏览器允许读取的连接阶段。
+        </p>
+      </div>
+      <span class="privacy-badge">纯前端 · 无遥测</span>
+    </header>
+
+    <main>
+      <section class="panel controls-panel" aria-labelledby="target-heading">
+        <div class="section-heading">
+          <div>
+            <p class="step">01 / Target</p>
+            <h2 id="target-heading">选择测速目标</h2>
+          </div>
+          <p id="preset-message" class="muted" aria-live="polite"></p>
+        </div>
+
+        <form id="speed-test-form" novalidate>
+          <div class="field field-preset">
+            <label for="preset-select">预置目标</label>
+            <select id="preset-select" name="preset">
+              <option value="manual">手动输入</option>
+            </select>
+          </div>
+
+          <div class="field field-url">
+            <label for="target-url">HTTP(S) 文件或接口 URL</label>
+            <input
+              id="target-url"
+              name="url"
+              type="url"
+              inputmode="url"
+              autocomplete="url"
+              spellcheck="false"
+              placeholder="https://cdn.example.com/large-file.bin?signature=…"
+              required
+            />
+            <p class="field-hint">
+              请求会原样使用该 URL，不追加随机参数；片段（# 后内容）不会发送。
+            </p>
+          </div>
+
+          <div class="run-options">
+            <div class="field">
+              <label for="concurrency">并发请求</label>
+              <input id="concurrency" name="concurrency" type="number" min="1" max="8" value="1" />
+            </div>
+            <div class="field">
+              <label for="duration">最长时长（秒）</label>
+              <input id="duration" name="duration" type="number" min="1" max="60" value="10" />
+            </div>
+          </div>
+
+          <div class="actions">
+            <button id="start-button" class="button button-primary" type="submit">开始测速</button>
+            <button id="stop-button" class="button button-secondary" type="button" disabled>停止</button>
+            <p id="run-status" class="run-status" role="status" aria-live="polite">等待开始</p>
+          </div>
+        </form>
+
+        <details class="requirements">
+          <summary>目标服务需要满足什么条件？</summary>
+          <ul>
+            <li>跨域目标必须允许当前页面的 CORS 请求，否则浏览器会阻止读取响应。</li>
+            <li>
+              若要显示 DNS、连接、TLS、TTFB 等详细阶段，跨域响应还需返回
+              <code>Timing-Allow-Origin</code>。
+            </li>
+            <li>HTTPS 页面不能请求 HTTP 目标；测速会产生真实下载流量和服务端请求。</li>
+          </ul>
+        </details>
+      </section>
+
+      <section class="panel measurement-panel" aria-labelledby="measurement-heading">
+        <div class="section-heading">
+          <div>
+            <p class="step">02 / Run</p>
+            <h2 id="measurement-heading">实时吞吐</h2>
+          </div>
+          <p id="active-target" class="target-summary">尚未运行</p>
+        </div>
+
+        <div class="metric-grid" aria-label="测速指标">
+          <article class="metric metric-primary">
+            <span>当前速度</span>
+            <strong id="current-speed">0.00</strong>
+            <small>Mbps</small>
+          </article>
+          <article class="metric">
+            <span>平均速度</span>
+            <strong id="average-speed">0.00</strong>
+            <small>Mbps</small>
+          </article>
+          <article class="metric">
+            <span>峰值速度</span>
+            <strong id="peak-speed">0.00</strong>
+            <small>Mbps</small>
+          </article>
+          <article class="metric">
+            <span>已接收</span>
+            <strong id="transferred">0 B</strong>
+            <small id="elapsed">0.00 秒</small>
+          </article>
+        </div>
+
+        <div class="chart-wrap">
+          <svg
+            id="speed-chart"
+            class="speed-chart"
+            role="img"
+            aria-label="下载速度随时间变化曲线"
+          ></svg>
+          <span class="chart-unit">Mbps</span>
+        </div>
+      </section>
+
+      <section class="panel result-panel" aria-labelledby="result-heading">
+        <div class="section-heading">
+          <div>
+            <p class="step">03 / Result</p>
+            <h2 id="result-heading">连接与响应耗时</h2>
+          </div>
+          <p id="response-meta" class="muted">完成测速后显示</p>
+        </div>
+
+        <dl class="timing-grid">
+          <div><dt>DNS</dt><dd id="timing-dns">—</dd></div>
+          <div><dt>连接</dt><dd id="timing-connect">—</dd></div>
+          <div><dt>TLS</dt><dd id="timing-tls">—</dd></div>
+          <div><dt>TTFB</dt><dd id="timing-ttfb">—</dd></div>
+          <div><dt>传输</dt><dd id="timing-transfer">—</dd></div>
+          <div><dt>请求总耗时</dt><dd id="timing-total">—</dd></div>
+        </dl>
+        <p id="timing-note" class="notice" aria-live="polite">
+          详细阶段来自 Resource Timing API；连接复用时 DNS、连接或 TLS 可能为 0 ms。
+        </p>
+      </section>
+
+      <section class="panel history-panel" aria-labelledby="history-heading">
+        <div class="section-heading">
+          <div>
+            <p class="step">Local history</p>
+            <h2 id="history-heading">最近结果</h2>
+          </div>
+          <button id="clear-history" class="text-button" type="button">清空本地记录</button>
+        </div>
+        <p class="muted history-privacy">
+          仅保存在此浏览器的 localStorage。查询参数与片段不会写入历史，避免持久化签名信息。
+        </p>
+        <p id="history-empty" class="empty-state">暂无测速记录。</p>
+        <div id="history-table-wrap" class="table-wrap" hidden>
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>目标</th>
+                <th>平均</th>
+                <th>峰值</th>
+                <th>流量 / 时长</th>
+                <th>协议</th>
+              </tr>
+            </thead>
+            <tbody id="history-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>测量结果只代表当前浏览器、网络与目标服务在本次请求期间的表现。</p>
+    </footer>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
