@@ -255,6 +255,8 @@ export async function runDownload(
     if (windowMs <= 0 || (!force && windowMs < sampleIntervalMs * 0.8)) return;
 
     const windowDecodedBytes = decodedBytes - lastSampleDecodedBytes;
+    if (force && windowDecodedBytes === 0 && samples.length > 0) return;
+
     const sample = Object.freeze({
       decodedBytes,
       decodedMbps: bytesPerWindowToMbps(windowDecodedBytes, windowMs),

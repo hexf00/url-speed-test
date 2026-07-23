@@ -504,7 +504,7 @@ code {
 
 table {
   width: 100%;
-  min-width: 850px;
+  min-width: 1_060px;
   table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.82rem;
@@ -533,12 +533,19 @@ th:nth-child(3) {
 }
 
 th:nth-child(4) {
+  width: 120px;
+}
+
+th:nth-child(5) {
   width: 180px;
 }
 
-th:nth-child(5),
 th:nth-child(6) {
-  width: 85px;
+  width: 90px;
+}
+
+th:nth-child(7) {
+  width: 170px;
 }
 
 th {

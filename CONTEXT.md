@@ -45,7 +45,7 @@ Decoded response-body bytes divided by Transferred Body Size for a completed Run
 _Avoid_: Percentage saved, compression level
 
 **Result**:
-The completed summary of a Run, including decoded Samples, final transfer facts when available, and browser-visible resource timing.
+The completed summary of a Run, including decoded Samples, final transfer facts when available, and browser-visible resource timing. Decoded summary facts remain the primary Result projection when exact transfer facts are unavailable.
 _Avoid_: Report, log entry
 
 **History**:

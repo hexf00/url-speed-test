@@ -96,19 +96,19 @@
         <div class="section-heading">
           <div>
             <p class="step">02 / Run</p>
-            <h2 id="measurement-heading">实际传输与实时解码</h2>
+            <h2 id="measurement-heading">解码吞吐与实际传输</h2>
           </div>
           <p id="active-target" class="target-summary">尚未运行</p>
         </div>
 
         <div class="metric-grid" aria-label="测速指标">
           <article class="metric metric-primary">
-            <span>实际平均速度</span>
-            <strong id="transfer-average-speed">—</strong>
+            <span>平均解码速度</span>
+            <strong id="decoded-average-speed">0.00</strong>
             <small>Mbps</small>
           </article>
           <article class="metric">
-            <span>当前解码速度</span>
+            <span>最近窗口速度</span>
             <strong id="decoded-current-speed">0.00</strong>
             <small>Mbps</small>
           </article>
@@ -134,7 +134,7 @@
           <span class="chart-unit">Mbps</span>
         </div>
         <p class="chart-note">
-          实时曲线来自浏览器解码后的响应流；压缩后的实际平均速度会在请求结束后计算。
+          平均值、最近窗口、峰值和曲线均来自浏览器解码后的响应流；精确的压缩后传输指标仅在浏览器可提供时显示。
         </p>
       </section>
 
@@ -149,8 +149,8 @@
 
         <h3 class="subheading">传输体积与压缩</h3>
         <dl class="transfer-grid">
+          <div><dt>实际平均速度（Mbps）</dt><dd id="transfer-average-speed">—</dd></div>
           <div><dt>实际下载（响应体）</dt><dd id="transferred-body-size">—</dd></div>
-          <div><dt>解码后大小</dt><dd id="decoded-body-size">—</dd></div>
           <div><dt>压缩比</dt><dd id="compression-ratio">—</dd></div>
           <div><dt>节省流量</dt><dd id="compression-savings">—</dd></div>
         </dl>
@@ -190,10 +190,11 @@
               <tr>
                 <th>时间</th>
                 <th>目标</th>
-                <th>实际平均</th>
+                <th>解码平均</th>
+                <th>解码峰值</th>
                 <th>实际 / 解码</th>
                 <th>压缩比</th>
-                <th>协议</th>
+                <th>结果</th>
               </tr>
             </thead>
             <tbody id="history-body"></tbody>
