@@ -25,15 +25,27 @@ An ordered collection of Targets measured as sequential independent Runs.
 _Avoid_: Parallel test, multi-target Run
 
 **Sample**:
-A time-window observation of bytes delivered and achieved throughput during a Run.
+A time-window observation of decoded response-body bytes delivered to JavaScript during a Run.
 _Avoid_: Packet, event
 
-**Throughput**:
-The application-visible rate at which response-body bytes are delivered during a Run.
-_Avoid_: Link capacity, physical bandwidth
+**Decoded Throughput**:
+The live application-visible rate of decoded response-body bytes delivered to JavaScript. Samples and the live curve measure Decoded Throughput because browser Fetch streams run after content decoding.
+_Avoid_: Network speed, wire speed
+
+**Transferred Body Size**:
+The completed response-body bytes before content decoding, excluding HTTP headers and protocol framing. A Result obtains this from validated Resource Timing entries or complete `Content-Length` responses; it is unavailable when the browser exposes neither exact source.
+_Avoid_: Decoded size, total wire bytes
+
+**Transfer Throughput**:
+Transferred Body Size divided by the Run elapsed time. It is an exact final average, not a live Sample series.
+_Avoid_: Live throughput, link capacity, physical bandwidth
+
+**Compression Ratio**:
+Decoded response-body bytes divided by Transferred Body Size for a completed Run.
+_Avoid_: Percentage saved, compression level
 
 **Result**:
-The completed summary of a Run, including Samples, achieved throughput and browser-visible resource timing.
+The completed summary of a Run, including decoded Samples, final transfer facts when available, and browser-visible resource timing.
 _Avoid_: Report, log entry
 
 **History**:

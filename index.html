@@ -83,6 +83,10 @@
               若要显示 DNS、连接、TLS、TTFB 等详细阶段，跨域响应还需返回
               <code>Timing-Allow-Origin</code>。
             </li>
+            <li>
+              压缩后的实际响应体大小会在请求完成后读取；跨域目标需提供
+              <code>Timing-Allow-Origin</code>，或为完整响应提供 <code>Content-Length</code>。
+            </li>
             <li>HTTPS 页面不能请求 HTTP 目标；测速会产生真实下载流量和服务端请求。</li>
           </ul>
         </details>
@@ -92,30 +96,30 @@
         <div class="section-heading">
           <div>
             <p class="step">02 / Run</p>
-            <h2 id="measurement-heading">实时吞吐</h2>
+            <h2 id="measurement-heading">实际传输与实时解码</h2>
           </div>
           <p id="active-target" class="target-summary">尚未运行</p>
         </div>
 
         <div class="metric-grid" aria-label="测速指标">
           <article class="metric metric-primary">
-            <span>当前速度</span>
-            <strong id="current-speed">0.00</strong>
+            <span>实际平均速度</span>
+            <strong id="transfer-average-speed">—</strong>
             <small>Mbps</small>
           </article>
           <article class="metric">
-            <span>平均速度</span>
-            <strong id="average-speed">0.00</strong>
+            <span>当前解码速度</span>
+            <strong id="decoded-current-speed">0.00</strong>
             <small>Mbps</small>
           </article>
           <article class="metric">
-            <span>峰值速度</span>
-            <strong id="peak-speed">0.00</strong>
+            <span>解码峰值</span>
+            <strong id="decoded-peak-speed">0.00</strong>
             <small>Mbps</small>
           </article>
           <article class="metric">
-            <span>已接收</span>
-            <strong id="transferred">0 B</strong>
+            <span>已解码</span>
+            <strong id="decoded-received">0 B</strong>
             <small id="elapsed">0.00 秒</small>
           </article>
         </div>
@@ -125,21 +129,36 @@
             id="speed-chart"
             class="speed-chart"
             role="img"
-            aria-label="下载速度随时间变化曲线"
+            aria-label="解码吞吐随时间变化曲线"
           ></svg>
           <span class="chart-unit">Mbps</span>
         </div>
+        <p class="chart-note">
+          实时曲线来自浏览器解码后的响应流；压缩后的实际平均速度会在请求结束后计算。
+        </p>
       </section>
 
       <section class="panel result-panel" aria-labelledby="result-heading">
         <div class="section-heading">
           <div>
             <p class="step">03 / Result</p>
-            <h2 id="result-heading">连接与响应耗时</h2>
+            <h2 id="result-heading">传输与连接详情</h2>
           </div>
           <p id="response-meta" class="muted">完成测速后显示</p>
         </div>
 
+        <h3 class="subheading">传输体积与压缩</h3>
+        <dl class="transfer-grid">
+          <div><dt>实际下载（响应体）</dt><dd id="transferred-body-size">—</dd></div>
+          <div><dt>解码后大小</dt><dd id="decoded-body-size">—</dd></div>
+          <div><dt>压缩比</dt><dd id="compression-ratio">—</dd></div>
+          <div><dt>节省流量</dt><dd id="compression-savings">—</dd></div>
+        </dl>
+        <p id="transfer-note" class="notice" aria-live="polite">
+          压缩后响应体不包含 HTTP 头和协议开销；完成测速后显示。
+        </p>
+
+        <h3 class="subheading">连接阶段</h3>
         <dl class="timing-grid">
           <div><dt>DNS</dt><dd id="timing-dns">—</dd></div>
           <div><dt>连接</dt><dd id="timing-connect">—</dd></div>
@@ -171,9 +190,9 @@
               <tr>
                 <th>时间</th>
                 <th>目标</th>
-                <th>平均</th>
-                <th>峰值</th>
-                <th>流量 / 时长</th>
+                <th>实际平均</th>
+                <th>实际 / 解码</th>
+                <th>压缩比</th>
                 <th>协议</th>
               </tr>
             </thead>

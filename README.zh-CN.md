@@ -12,7 +12,9 @@ HTTP(S) 文件或接口”的路径，无需第三方测速节点。
 ## 能测什么
 
 - 原样请求手动输入或预置的 URL，不追加 cache-busting 查询参数。
-- 按 250 ms 窗口绘制实时速度曲线，展示当前、平均、峰值、流量与时长。
+- 按 250 ms 窗口绘制响应体解码后的实时吞吐曲线。
+- 响应完整结束后，展示压缩后响应体大小、实际平均传输速度、解码后大小、压缩比和
+  节省流量。
 - 展示浏览器可见的 DNS、连接、TLS、TTFB、传输、总耗时和 HTTP 协议。
 - 默认一个下载请求，可选择 1–8 个对同一 URL 的并发请求。
 - 结果仅写入浏览器 `localStorage`；历史中的 URL 会移除 query 和 hash。
@@ -63,7 +65,8 @@ python3 -m http.server 8080
 Access-Control-Allow-Origin: https://speed.example.com
 ```
 
-若还要看到 DNS、连接、TLS、TTFB 等详细阶段，需要额外返回：
+若还要通过 Resource Timing 看到 DNS、连接、TLS、TTFB 等详细阶段和压缩后响应体
+大小，需要额外返回：
 
 ```http
 Timing-Allow-Origin: https://speed.example.com
@@ -72,12 +75,15 @@ Timing-Allow-Origin: https://speed.example.com
 请按你的安全策略明确列出允许的来源。只有在确实允许任意站点读取这些响应时，才使用
 `*`。
 
+对于完整响应，准确的 `Content-Length` 也能在 Resource Timing 大小受保护时提供压缩后
+响应体大小。跨域 chunked 响应若要得到这个指标，则需要 `Timing-Allow-Origin`。
+
 推荐目标满足以下条件：
 
 - 只读、幂等的 `GET` 资源，不产生业务副作用。
 - 文件足够大，或接口能持续输出；达到设定时长后浏览器会中止未完成的请求。
-- 返回不可压缩或已压缩的二进制数据。Fetch 读取的是应用可见的响应体；高度可压缩且
-  使用 `Content-Encoding` 的内容不适合代表线上传输字节率。
+- 可以使用 gzip、Brotli 或浏览器支持的其它内容编码。浏览器会自动协商压缩；应按压缩
+  后体积选择足够大的资源，避免高度可压缩的响应在形成有效采样窗口前就已结束。
 - 接受匿名请求或查询参数签名。本工具使用 `credentials: "omit"`，不会携带 Cookie。
 
 `cache: "no-store"` 用于绕过浏览器 HTTP 缓存，并且不会修改目标 URL。上游 CDN、
@@ -86,10 +92,19 @@ Timing-Allow-Origin: https://speed.example.com
 ## 如何理解结果
 
 - Mbps 使用十进制定义：`bytes × 8 / elapsed seconds / 1,000,000`。
+- 大小使用十进制 `kB`、`MB`、`GB`，与 Mbps 和常见浏览器 Network 面板一致。
+  `48.0 MiB` 约等于 `50.3 MB`，与压缩后传输的 `37.6 MB` 不是同一个量。
+- **实际平均速度**使用内容解码前的压缩后响应体字节，不包含 HTTP 头和协议帧；
+  **实时解码速度**及曲线使用 Fetch 解码后交给 JavaScript 的字节。浏览器在请求进行中
+  不提供精确的压缩后字节进度。
+- 压缩比定义为 `解码后字节 / 实际传输响应体字节`。
 - 默认并发为 1，最接近一次普通下载。增加并发会同时请求同一 URL，常用于观察单连接
   未跑满时的聚合吞吐，也会按并发数增加服务端请求和流量。
 - DNS、连接或 TLS 为 `0 ms` 通常表示浏览器复用了已有解析或连接，并非测量错误。
-- 跨域目标没有 `Timing-Allow-Origin` 时，吞吐仍可测，但受保护的分阶段耗时会显示为空。
+- 跨域目标没有 `Timing-Allow-Origin` 时，受保护的分阶段耗时会显示为空；完整响应若有
+  `Content-Length`，仍可得到实际传输指标，否则只能得到解码吞吐。
+- 达到时长上限而中断的响应保留解码 Samples，但没有精确的压缩后传输大小，因为浏览器
+  不公开中断响应的部分编码字节。
 - 结果代表本次浏览器、网络、目标服务与缓存链路的共同表现，不等同于物理链路上限。
 
 ## 开发与验证
@@ -104,8 +119,9 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-单元测试覆盖 URL、计量、Resource Timing 与历史脱敏边界；Playwright 测试使用真实
-跨域流式响应验证手动 URL、预置 Target、速度曲线、TAO 降级和 localStorage 脱敏。
+单元测试覆盖 URL、解码与传输计量、Resource Timing 和历史脱敏边界；Playwright 测试
+使用真实跨域流式与 gzip 响应验证手动 URL、预置 Target、压缩指标、TAO 降级、超长 URL
+布局和 localStorage 脱敏。
 
 领域词汇见 [`CONTEXT.md`](./CONTEXT.md)，关键设计决策见 [`docs/adr`](./docs/adr)。
 

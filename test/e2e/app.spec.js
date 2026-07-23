@@ -15,12 +15,12 @@ test("measures an exact signed URL and persists only a sanitized result", async 
   await expect(page.locator("#speed-chart polyline")).toHaveCount(1);
   await expect(page.locator("#timing-ttfb")).not.toHaveText("—");
 
-  const average = Number(await page.locator("#average-speed").textContent());
+  const average = Number(await page.locator("#transfer-average-speed").textContent());
   expect(average).toBeGreaterThan(0);
   await expect(page.locator("#history-body tr")).toHaveCount(1);
 
   const storedHistory = await page.evaluate(() =>
-    localStorage.getItem("url-speed-test.history.v1")
+    localStorage.getItem("url-speed-test.history.v2")
   );
   expect(storedHistory).toContain("http://127.0.0.1:4174/download.bin");
   expect(storedHistory).not.toContain("manual-secret");
@@ -57,7 +57,10 @@ test("keeps throughput results when cross-origin timing detail is not exposed", 
   await expect(page.locator("#run-status")).toContainText("完成", { timeout: 10_000 });
   await expect(page.locator("#timing-note")).toContainText("Timing-Allow-Origin");
   await expect(page.locator("#timing-dns")).toHaveText("—");
-  expect(Number(await page.locator("#average-speed").textContent())).toBeGreaterThan(0);
+  expect(
+    Number(await page.locator("#transfer-average-speed").textContent())
+  ).toBeGreaterThan(0);
+  await expect(page.locator("#transfer-note")).toContainText("Content-Length");
 });
 
 test("completes a long response at the declared duration limit", async ({ page }) => {
@@ -69,7 +72,12 @@ test("completes a long response at the declared duration limit", async ({ page }
   await expect(page.locator("#run-status")).toContainText("完成", { timeout: 10_000 });
   await expect(page.locator("#response-meta")).toContainText("达到时长上限");
   await expect(page.locator("#history-body tr")).toHaveCount(1);
-  expect(Number(await page.locator("#average-speed").textContent())).toBeGreaterThan(0);
+  await expect(page.locator("#transfer-average-speed")).toHaveText("—");
+  const limitedSummary = await page.evaluate(
+    () => JSON.parse(localStorage.getItem("url-speed-test.history.v2")).results[0].summary
+  );
+  expect(limitedSummary.decodedAverageMbps).toBeGreaterThan(0);
+  expect(limitedSummary.transferredBodyBytes).toBeNull();
 });
 
 test("does not persist a run stopped by the user", async ({ page }) => {
@@ -84,6 +92,87 @@ test("does not persist a run stopped by the user", async ({ page }) => {
   await expect(page.locator("#run-status")).toHaveText("已停止");
   await expect(page.locator("#history-empty")).toBeVisible();
   expect(
-    await page.evaluate(() => localStorage.getItem("url-speed-test.history.v1"))
+    await page.evaluate(() => localStorage.getItem("url-speed-test.history.v2"))
   ).toBeNull();
+});
+
+test("reports compressed transfer bytes separately from decoded bytes", async ({ page }) => {
+  await page.goto("/");
+  await page
+    .locator("#target-url")
+    .fill("http://127.0.0.1:4174/compressed.bin?token=manual-secret");
+  await page.locator("#concurrency").fill("2");
+  await page.locator("#duration").fill("2");
+  await page.locator("#start-button").click();
+
+  await expect(page.locator("#run-status")).toContainText("完成", { timeout: 10_000 });
+  await expect(page.locator("#response-meta")).toContainText("gzip");
+  await expect(page.locator("#transfer-note")).toContainText("Resource Timing");
+
+  const summary = await page.evaluate(
+    () => JSON.parse(localStorage.getItem("url-speed-test.history.v2")).results[0].summary
+  );
+  expect(summary.transferSource).toBe("resource-timing");
+  expect(summary.transferredBodyBytes).toBeGreaterThan(0);
+  expect(summary.decodedBytes).toBeGreaterThan(summary.transferredBodyBytes);
+  expect(summary.decodedBytes).toBe(12_000_000);
+  expect(summary.compressionRatio).toBeGreaterThan(1);
+  expect(summary.compressionSavingsPercent).toBeGreaterThan(0);
+});
+
+test("contains long active and historical URLs without widening the page", async ({ page }) => {
+  const longPath = "a".repeat(4_000);
+  const longLabel = `127.0.0.1:4174/${longPath}`;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(
+    ({ label, location }) => {
+      localStorage.setItem(
+        "url-speed-test.history.v2",
+        JSON.stringify({
+          results: [
+            {
+              completionReason: "response-complete",
+              elapsedMs: 1_000,
+              endedAt: "2026-07-22T01:00:01.000Z",
+              id: "long-url-run",
+              options: { concurrency: 1, durationMs: 10_000, sampleIntervalMs: 250 },
+              response: { contentEncoding: null, contentLength: 1_000, status: 200 },
+              samples: [{ decodedBytes: 1_000, decodedMbps: 0.008, elapsedMs: 1_000 }],
+              schemaVersion: 2,
+              startedAt: "2026-07-22T01:00:00.000Z",
+              summary: {
+                compressionRatio: 1,
+                compressionSavingsPercent: 0,
+                decodedAverageMbps: 0.008,
+                decodedBytes: 1_000,
+                decodedCurrentMbps: 0.008,
+                decodedPeakMbps: 0.008,
+                transferAverageMbps: 0.008,
+                transferredBodyBytes: 1_000,
+                transferSource: "content-length",
+              },
+              target: { label, location, source: "manual" },
+              timing: { available: true, detailAvailable: true, protocol: "h2" },
+            },
+          ],
+          schemaVersion: 2,
+        })
+      );
+    },
+    { label: longLabel, location: `http://${longLabel}` }
+  );
+
+  await page.goto("/");
+  await page.locator("#target-url").fill(`http://${longLabel}?token=manual-secret`);
+  await page.locator("#start-button").click();
+  await expect(page.locator("#active-target")).toContainText("127.0.0.1:4174");
+
+  const layout = await page.evaluate(() => ({
+    pageClientWidth: document.documentElement.clientWidth,
+    pageScrollWidth: document.documentElement.scrollWidth,
+    tableClientWidth: document.querySelector(".table-wrap").clientWidth,
+    tableScrollWidth: document.querySelector(".table-wrap").scrollWidth,
+  }));
+  expect(layout.pageScrollWidth).toBe(layout.pageClientWidth);
+  expect(layout.tableScrollWidth).toBeGreaterThan(layout.tableClientWidth);
 });
