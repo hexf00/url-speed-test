@@ -15,9 +15,11 @@ Resource Timing exposes `encodedBodySize` and `decodedBodySize`, but only after 
 - For a normally completed Run, derive Transferred Body Size from the complete set of matching Resource Timing entries when their aggregate decoded size matches the Fetch stream. If those sizes are protected, use `Content-Length` only when every response completed and every length is present.
 - If neither exact source is available, or the Run ends at its duration limit, leave transfer metrics unavailable. Do not substitute decoded bytes under a transfer label.
 - Calculate final Transfer Throughput from Transferred Body Size and Run elapsed time. Calculate Compression Ratio as decoded bytes divided by Transferred Body Size.
+- Lead the Run summary and History with decoded average, latest-window, peak, and byte facts because they remain valid for completed and duration-limited Runs. Show exact transfer facts as optional detail.
+- Treat the latest window as the most recent sampling interval. End-of-Run bookkeeping does not add an empty forced Sample that would overwrite a valid window; scheduled zero-byte windows remain visible as genuine stalls.
 - Display byte sizes with decimal units so `MB` aligns with Mbps and browser network tools. Transferred Body Size excludes HTTP headers and protocol framing.
 - Store the new Result shape as schema version 2 and remove the retired version 1 local History document rather than interpreting old decoded fields as transfer fields.
 
 ## Consequences
 
-Completed compressed Runs show an exact final average, transferred response-body size, decoded size, ratio, and savings. The live curve remains useful but is explicitly application-visible decoded throughput. Cross-origin Targets get transfer metrics with `Timing-Allow-Origin` or a complete `Content-Length`; chunked cross-origin responses without either source show an unavailable state. Duration-limited Runs retain decoded evidence but cannot claim exact compressed transfer bytes.
+Completed compressed Runs show an exact final average, transferred response-body size, decoded size, ratio, and savings. The live curve remains useful but is explicitly application-visible decoded throughput. Cross-origin Targets get transfer metrics with `Timing-Allow-Origin` or a complete `Content-Length`; chunked cross-origin responses without either source show an unavailable state. Duration-limited Runs retain a useful decoded summary and History row but cannot claim exact compressed transfer bytes.

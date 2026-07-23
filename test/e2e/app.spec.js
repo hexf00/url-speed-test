@@ -15,9 +15,16 @@ test("measures an exact signed URL and persists only a sanitized result", async 
   await expect(page.locator("#speed-chart polyline")).toHaveCount(1);
   await expect(page.locator("#timing-ttfb")).not.toHaveText("—");
 
+  const decodedAverage = Number(
+    await page.locator("#decoded-average-speed").textContent()
+  );
+  expect(decodedAverage).toBeGreaterThan(0);
   const average = Number(await page.locator("#transfer-average-speed").textContent());
   expect(average).toBeGreaterThan(0);
-  await expect(page.locator("#history-body tr")).toHaveCount(1);
+  const historyRow = page.locator("#history-body tr");
+  await expect(historyRow).toHaveCount(1);
+  await expect(historyRow).toContainText("响应读取完成");
+  await expect(historyRow).toContainText("HTTP 200");
 
   const storedHistory = await page.evaluate(() =>
     localStorage.getItem("url-speed-test.history.v2")
@@ -69,10 +76,31 @@ test("completes a long response at the declared duration limit", async ({ page }
   await page.locator("#duration").fill("1");
   await page.locator("#start-button").click();
 
-  await expect(page.locator("#run-status")).toContainText("完成", { timeout: 10_000 });
+  await expect(page.locator("#run-status")).toContainText("达到时长上限", {
+    timeout: 10_000,
+  });
+  await expect(page.locator("#run-status")).toContainText("解码平均");
   await expect(page.locator("#response-meta")).toContainText("达到时长上限");
-  await expect(page.locator("#history-body tr")).toHaveCount(1);
-  await expect(page.locator("#transfer-average-speed")).toHaveText("—");
+  expect(
+    Number(await page.locator("#decoded-average-speed").textContent())
+  ).toBeGreaterThan(0);
+  expect(
+    Number(await page.locator("#decoded-current-speed").textContent())
+  ).toBeGreaterThan(0);
+  expect(
+    Number(await page.locator("#decoded-peak-speed").textContent())
+  ).toBeGreaterThan(0);
+  await expect(page.locator("#transfer-average-speed")).toHaveText("不可见");
+  const historyRow = page.locator("#history-body tr");
+  await expect(historyRow).toHaveCount(1);
+  await expect(historyRow.locator("td")).toHaveCount(7);
+  expect(
+    Number((await historyRow.locator("td").nth(2).textContent()).replace(" Mbps", ""))
+  ).toBeGreaterThan(0);
+  expect(
+    Number((await historyRow.locator("td").nth(3).textContent()).replace(" Mbps", ""))
+  ).toBeGreaterThan(0);
+  await expect(historyRow).toContainText("HTTP 200 · 达到时长上限");
   const limitedSummary = await page.evaluate(
     () => JSON.parse(localStorage.getItem("url-speed-test.history.v2")).results[0].summary
   );
@@ -108,6 +136,13 @@ test("reports compressed transfer bytes separately from decoded bytes", async ({
   await expect(page.locator("#run-status")).toContainText("完成", { timeout: 10_000 });
   await expect(page.locator("#response-meta")).toContainText("gzip");
   await expect(page.locator("#transfer-note")).toContainText("Resource Timing");
+  expect(
+    Number(await page.locator("#decoded-average-speed").textContent())
+  ).toBeGreaterThan(0);
+  expect(
+    Number(await page.locator("#transfer-average-speed").textContent())
+  ).toBeGreaterThan(0);
+  await expect(page.locator("#history-body tr")).toContainText("响应读取完成");
 
   const summary = await page.evaluate(
     () => JSON.parse(localStorage.getItem("url-speed-test.history.v2")).results[0].summary

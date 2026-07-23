@@ -13,9 +13,11 @@ from the current client to a specific HTTP(S) file or API resource that you choo
 
 - Requests a manually entered or preset URL as-is, without appending cache-busting
   query parameters.
-- Plots decoded response throughput in live 250 ms windows.
-- After a response completes, shows compressed response-body bytes, actual average
-  transfer throughput, decoded size, compression ratio, and traffic savings.
+- Shows decoded average, latest-window, and peak throughput while plotting decoded
+  response throughput in live 250 ms windows.
+- When the browser exposes exact data for a completed response, also shows compressed
+  response-body bytes, actual average transfer throughput, compression ratio, and
+  traffic savings.
 - Shows browser-visible DNS, connection, TLS, TTFB, transfer, total timing, and HTTP
   protocol data.
 - Uses one request by default, with configurable concurrency from 1 to 8 for the same URL.
@@ -108,9 +110,10 @@ service and is part of the measured client-to-service path.
   panels. `48.0 MiB` is about `50.3 MB`; it is not the same as a compressed
   `37.6 MB` transfer.
 - **Actual average speed** uses compressed response-body bytes before content
-  decoding. It excludes HTTP headers and protocol framing. **Live decoded speed** and
-  the curve use the bytes that Fetch exposes after decoding; browsers do not expose
-  exact compressed progress while a request is running.
+  decoding. It excludes HTTP headers and protocol framing. **Decoded average**,
+  **latest-window speed**, peak speed, and the curve use the bytes that Fetch exposes
+  after decoding; browsers do not expose exact compressed progress while a request is
+  running.
 - Compression ratio is `decoded bytes / transferred response-body bytes`.
 - Concurrency defaults to 1, which resembles a normal single download. Increasing
   concurrency requests the same URL simultaneously and can reveal aggregate
@@ -121,8 +124,10 @@ service and is part of the measured client-to-service path.
 - Without `Timing-Allow-Origin`, protected phase timings stay blank. A normally
   completed response can still provide actual transfer metrics through
   `Content-Length`; otherwise only decoded throughput is available.
-- A duration-limited response has decoded Samples but no exact compressed transfer
-  size, because browsers do not expose partial encoded bytes after aborting it.
+- A duration-limited response remains a useful Result: its decoded average,
+  latest-window and peak throughput are shown in the Run summary and History. Exact
+  compressed transfer size remains unavailable because browsers do not expose partial
+  encoded bytes after aborting it.
 - A Result represents the browser, network, Target service, and cache path during
   that specific Run. Physical link capacity is a different metric.
 
